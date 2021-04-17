@@ -110,6 +110,10 @@ def main(args):
         print()
 
 
-if __name__ == "__main__":
+def _main():
     args = parse_args()
     main(args)
+
+
+if __name__ == "__main__":
+    _main()

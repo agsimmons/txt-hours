@@ -1,0 +1,18 @@
+[tool.poetry]
+name = "txt-hours"
+version = "0.1.0"
+description = ""
+authors = ["Andrew Simmons <agsimmons0@gmail.com>"]
+
+[tool.poetry.scripts]
+txthours = 'txt_hours:_main'
+
+[tool.poetry.dependencies]
+python = "^3.6.1"
+
+[tool.poetry.dev-dependencies]
+black = "^20.8b1"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
