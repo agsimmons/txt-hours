@@ -1,40 +1,57 @@
 import argparse
-from collections import defaultdict
-from datetime import timedelta, time
+from collections import defaultdict, namedtuple
+from datetime import timedelta, time, date
+import json
 from pathlib import Path
 import re
+
+import pandas as pd
+
+
+NOON = time(hour=12)
+
+DayBlock = namedtuple("DayBlock", ["date", "time_entries"])
+TimeEntry = namedtuple("TimeEntry", ["task_name", "duration"])
+
+
+def hours_minutes(obj):
+    return f"{obj.seconds//3600}:{(obj.seconds//60)%60:02}"
+
+
+class TimeDeltaJSONEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, timedelta):
+            return hours_minutes(obj)
+
+        return super().default(self, obj)
 
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("hours_file")
+    parser.add_argument("hours_file", type=Path)
 
     return parser.parse_args()
 
 
-def hours_minutes(td):
-    return f"{td.seconds//3600}:{(td.seconds//60)%60:02}"
-
-
-def parse_hour_line(hour_line):
-    # 5:30 - 6:10 : IF/THEN CMS
-
-    start_time_string = hour_line.split(" - ")[0]
+def parse_time_entry(time_entry):
+    start_time_string = time_entry.split(" - ")[0]
     start_time = time(
         hour=int(start_time_string.split(":")[0]),
         minute=int(start_time_string.split(":")[1]),
     )
 
-    end_time_string = hour_line.split(" - ")[1].split(" : ")[0]
+    end_time_string = time_entry.split(" - ")[1].split(" : ")[0]
     end_time = time(
         hour=int(end_time_string.split(":")[0]),
         minute=int(end_time_string.split(":")[1]),
     )
 
-    description = hour_line.split(" - ")[1].split(" : ")[1]
+    task_name = time_entry.split(" - ")[1].split(" : ")[1]
 
     # Test for and correct AM/PM
-    if end_time < start_time:
+    if start_time == NOON and end_time == NOON:
+        start_time = time(hour=end_time.hour - 12, minute=end_time.minute)
+    elif end_time <= start_time:
         end_time = time(hour=end_time.hour + 12, minute=end_time.minute)
 
     elapsed_hours = end_time.hour - start_time.hour
@@ -42,78 +59,56 @@ def parse_hour_line(hour_line):
 
     duration = timedelta(hours=elapsed_hours, minutes=elapsed_minutes)
 
-    return {
-        "start_time": start_time,
-        "end_time": end_time,
-        "duration": duration,
-        "description": description,
-    }
+    return TimeEntry(
+        task_name=task_name,
+        duration=duration,
+    )
 
 
-def main(args):
-    # 1. Find locations of ISO 8601 dates
-    # 2. Separate file into chunks starting at the date and going to the blank line
-    # 3. For each chunk, split each line into start time, and time, and description
-    # 4. Determine if start/end times are in AM or PM (assume AM if noon is not crossed)
-    # 5. Calculate timedelta between start time and end time
-    # 6. Group based on description, and sum timedeltas
+def parse_day_block(day_block):
+    lines = day_block.splitlines()
 
-    with open(args.hours_file) as f:
-        hours_txt_lines = f.read().splitlines()
+    date = lines[0]
+    time_entries = lines[1:]
 
-    data_blocks = []
-    structured_data = {}
+    day_block = DayBlock(
+        date=lines[0],
+        time_entries=[parse_time_entry(time_entry) for time_entry in lines[1:]],
+    )
 
-    for line_num, line in enumerate(hours_txt_lines):
-        if re.match(r"^\d{4}-\d{2}-\d{2}$", line):
-            structured_data = {
-                "date": line,
-                "hours": [],
-            }
-        elif re.match(r"^\d{1,2}:\d{2} - \d{1,2}:\d{2} : .*$", line):
-            structured_data["hours"].append(parse_hour_line(line))
-        elif re.match(r"^$", line):
-            data_blocks.append(structured_data)
-        else:
-            raise ValueError(f"Formatting error on line {line_num}")
-    if structured_data:
-        data_blocks.append(structured_data)
-
-    # NOTE: This won't work until I re-do structure
-    # # Make sure timeline is consistant
-    # for date in data_blocks:
-
-    #     check_hour = None
-    #     for hour_entry in date["hours"]:
-    #         if check_hour:
-    #             print(f"Check hour: {check_hour}")
-    #             print(f"Start time: {hour_entry['start_time']}")
-    #             if hour_entry["start_time"] != check_hour:
-    #                 raise ValueError(
-    #                     f"Error in timeline on {date['date']} for hour entry {hour_entry}"
-    #                 )
-
-    #         check_hour = hour_entry["end_time"]
-
-    for date in data_blocks:
-        merged_hours = defaultdict(timedelta)
-        for hour_line in date["hours"]:
-            merged_hours[hour_line["description"]] += hour_line["duration"]
-
-        ordered_hours = sorted(
-            (description, duration) for description, duration in merged_hours.items()
-        )
-
-        print(date["date"])
-        for ordered_hour_line in ordered_hours:
-            print(f"{hours_minutes(ordered_hour_line[1])} : {ordered_hour_line[0]}")
-        print()
+    return day_block
 
 
-def _main():
+def parse_hours_file(path):
+    with open(path) as f:
+        text = f.read()
+
+    day_blocks = {}
+
+    for day_block in text.split("\n\n"):
+        day_block = parse_day_block(day_block)
+
+        day_blocks[day_block.date] = {}
+        for time_entry in day_block.time_entries:
+            if time_entry.task_name not in day_blocks[day_block.date]:
+                day_blocks[day_block.date][time_entry.task_name] = timedelta()
+
+            day_blocks[day_block.date][time_entry.task_name] += time_entry.duration
+
+    return day_blocks
+
+
+def main():
     args = parse_args()
-    main(args)
+
+    parsed_file = parse_hours_file(args.hours_file)
+    parsed_file_as_json = json.dumps(parsed_file, cls=TimeDeltaJSONEncoder)
+
+    df = pd.read_json(parsed_file_as_json, orient="index")
+    df = df.transpose()
+
+    print(df)
 
 
 if __name__ == "__main__":
-    _main()
+    main()
