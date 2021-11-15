@@ -2,6 +2,7 @@ import argparse
 from collections import defaultdict, namedtuple
 from datetime import timedelta, time, date
 import json
+import math
 from pathlib import Path
 import re
 
@@ -14,14 +15,22 @@ DayBlock = namedtuple("DayBlock", ["date", "time_entries"])
 TimeEntry = namedtuple("TimeEntry", ["task_name", "duration"])
 
 
-def hours_minutes(obj):
-    return f"{obj.seconds//3600}:{(obj.seconds//60)%60:02}"
+def hours_from_timedelta(obj, ceil=True):
+    hours = obj.seconds // 3600
+    fractional_hours = ((obj.seconds // 60) % 60) / 60
+
+    total_hours = hours + fractional_hours
+
+    if ceil:
+        return f"{(math.ceil(total_hours * 100.0) / 100.0):.2}"
+
+    return f"{total_hours:.2}"
 
 
 class TimeDeltaJSONEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, timedelta):
-            return hours_minutes(obj)
+            return hours_from_timedelta(obj)
 
         return super().default(self, obj)
 
