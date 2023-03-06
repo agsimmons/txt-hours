@@ -7,7 +7,7 @@ license = "GPL-3.0-only"
 readme = "README.md"
 
 [tool.poetry.scripts]
-txthours = 'txt_hours.txt_hours:main'
+txthours = 'txt_hours.main:main'
 
 [tool.poetry.dependencies]
 python = "^3.8.10"
