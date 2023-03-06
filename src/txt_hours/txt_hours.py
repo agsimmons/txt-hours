@@ -1,10 +1,9 @@
 import argparse
-from collections import defaultdict, namedtuple
-from datetime import timedelta, time, date
+from collections import namedtuple
+from datetime import timedelta, time
 import json
 import math
 from pathlib import Path
-import re
 
 import pandas as pd
 
