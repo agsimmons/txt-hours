@@ -3,6 +3,8 @@ name = "txt-hours"
 version = "0.2.0"
 description = ""
 authors = ["Andrew Simmons <agsimmons0@gmail.com>"]
+license = "GPL-3.0-only"
+readme = "README.md"
 
 [tool.poetry.scripts]
 txthours = 'txt_hours:main'
